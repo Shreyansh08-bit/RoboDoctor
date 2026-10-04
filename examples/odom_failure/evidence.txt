@@ -1,0 +1,12 @@
+Symptom: Navigation pauses while driving. ROS2 Humble.
+
+$ ros2 topic info /odom
+Type: nav_msgs/msg/Odometry
+Publisher count: 1
+Subscription count: 2
+
+$ ros2 topic hz /odom
+No messages received for 8.4 seconds
+
+[controller_server] /odom stale: last update was 8.4 seconds ago.
+[diff_drive_controller] Waiting for wheel state updates.

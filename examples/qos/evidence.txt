@@ -1,0 +1,18 @@
+Symptom: /scan has a publisher, but my subscriber receives nothing. ROS2 Humble.
+
+$ ros2 topic info /scan --verbose
+Type: sensor_msgs/msg/LaserScan
+Publisher count: 1
+Subscription count: 1
+Node name: lidar_driver
+Endpoint type: PUBLISHER
+QoS profile:
+  Reliability: BEST_EFFORT
+  Durability: VOLATILE
+Node name: obstacle_monitor
+Endpoint type: SUBSCRIPTION
+QoS profile:
+  Reliability: RELIABLE
+  Durability: VOLATILE
+
+[obstacle_monitor] New publisher discovered on topic '/scan', offering incompatible QoS. No messages will be received from it. Last incompatible policy: RELIABILITY

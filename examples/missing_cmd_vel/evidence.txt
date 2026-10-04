@@ -1,0 +1,34 @@
+Symptom: The robot stopped moving after restarting navigation. ROS2 Humble, differential drive.
+
+$ ros2 topic list
+/cmd_vel
+/odom
+/scan
+/tf
+/tf_static
+
+$ ros2 node list
+/controller_server
+/planner_server
+/bt_navigator
+/diff_drive_controller
+
+$ ros2 topic info /cmd_vel
+Type: geometry_msgs/msg/Twist
+Publisher count: 0
+Subscription count: 1
+
+$ ros2 node info /diff_drive_controller
+Subscribers:
+  /cmd_vel: geometry_msgs/msg/Twist
+Publishers:
+  /odom: nav_msgs/msg/Odometry
+
+$ ros2 lifecycle get /controller_server
+inactive [2]
+
+[bt_navigator] Waiting for navigation goal.
+[controller_server] Configured controller FollowPath.
+[controller_server] Waiting for lifecycle activation.
+
+Question: Why does /cmd_vel exist but the robot does not move?

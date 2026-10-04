@@ -1,0 +1,8 @@
+$ colcon build
+Starting >>> robot_driver
+CMake Error at CMakeLists.txt:14 (find_package):
+  Could not find a package configuration file provided by "serial_driver"
+Failed   <<< robot_driver [0.85s, exited with code 1]
+Aborted  <<< robot_bringup
+
+Summary: 0 packages finished; 1 package failed; 1 package aborted

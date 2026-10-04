@@ -1,0 +1,5 @@
+$ python robot.py
+Robot initialized successfully.
+Connected to controller.
+Mission started.
+Exit code: 0

@@ -1,0 +1,9 @@
+$ python monitor.py
+Traceback (most recent call last):
+  File "monitor.py", line 18, in <module>
+    average = sum(samples) / len(samples)
+ZeroDivisionError: division by zero
+
+Relevant source:
+samples = []
+average = sum(samples) / len(samples)

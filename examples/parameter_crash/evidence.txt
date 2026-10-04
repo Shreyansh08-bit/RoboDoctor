@@ -1,0 +1,13 @@
+Symptom: The drive node exits during launch. ROS2 Humble.
+
+[drive_node] rclpy.exceptions.InvalidParameterTypeException: Trying to set parameter 'wheel_radius' to '0.033' of type STRING, expecting type DOUBLE
+[ERROR] [drive_node]: process has died [exit code 1].
+
+params.yaml:
+drive_node:
+  ros__parameters:
+    wheel_radius: "0.033"
+    wheel_separation: 0.16
+
+Node source excerpt:
+self.declare_parameter('wheel_radius', 0.033)

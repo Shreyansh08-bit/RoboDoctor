@@ -1,0 +1,12 @@
+Symptom: Costmap is empty and no scan is visible. ROS2 Humble.
+
+$ ros2 topic info /scan
+Type: sensor_msgs/msg/LaserScan
+Publisher count: 0
+Subscription count: 1
+
+$ ros2 topic echo /scan
+WARNING: topic [/scan] does not appear to be published yet
+
+[lidar_driver] Failed to open serial port /dev/ttyUSB0: Permission denied
+[lidar_driver] Shutting down driver.

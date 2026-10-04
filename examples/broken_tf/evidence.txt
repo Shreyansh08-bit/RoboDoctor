@@ -1,0 +1,18 @@
+Symptom: Laser scan does not appear in RViz. ROS2 Humble.
+
+[rviz2] Could not find a connection between 'base_link' and 'laser' because they are not part of the same tree.
+
+$ ros2 topic echo /scan --once
+header:
+  frame_id: laser
+angle_min: -3.14
+angle_max: 3.14
+
+URDF excerpt:
+<link name="base_link"/>
+<link name="laser_link"/>
+<joint name="laser_joint" type="fixed">
+  <parent link="base_link"/>
+  <child link="laser_link"/>
+  <origin xyz="0.2 0 0.15" rpy="0 0 0"/>
+</joint>

@@ -1,0 +1,18 @@
+Symptom: Nav2 global costmap does not initialize. ROS2 Humble.
+
+[global_costmap] Timed out waiting for transform from base_link to map.
+[global_costmap] Invalid frame ID "map" passed to canTransform: frame does not exist
+[bt_navigator] map -> odom transform missing
+
+$ ros2 node list
+/map_server
+/amcl
+/controller_server
+/robot_state_publisher
+
+$ ros2 lifecycle get /amcl
+inactive [2]
+
+$ ros2 run tf2_ros tf2_echo odom base_link
+At time 1712345678.0
+Translation: [0.0, 0.0, 0.0]

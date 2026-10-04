@@ -1,0 +1,80 @@
+[
+  {
+    "id": "missing_cmd_vel",
+    "title": "My robot stopped moving",
+    "category": "Velocity",
+    "description": "A drive controller is listening, but nobody is sending velocity commands.",
+    "text": "Symptom: The robot stopped moving after restarting navigation. ROS2 Humble, differential drive.\n\n$ ros2 topic list\n/cmd_vel\n/odom\n/scan\n/tf\n/tf_static\n\n$ ros2 node list\n/controller_server\n/planner_server\n/bt_navigator\n/diff_drive_controller\n\n$ ros2 topic info /cmd_vel\nType: geometry_msgs/msg/Twist\nPublisher count: 0\nSubscription count: 1\n\n$ ros2 node info /diff_drive_controller\nSubscribers:\n  /cmd_vel: geometry_msgs/msg/Twist\nPublishers:\n  /odom: nav_msgs/msg/Odometry\n\n$ ros2 lifecycle get /controller_server\ninactive [2]\n\n[bt_navigator] Waiting for navigation goal.\n[controller_server] Configured controller FollowPath.\n[controller_server] Waiting for lifecycle activation.\n\nQuestion: Why does /cmd_vel exist but the robot does not move?"
+  },
+  {
+    "id": "odom_failure",
+    "title": "Odometry went quiet",
+    "category": "Odometry",
+    "description": "Navigation has not received fresh odometry for 8.4 seconds.",
+    "text": "Symptom: Navigation pauses while driving. ROS2 Humble.\n\n$ ros2 topic info /odom\nType: nav_msgs/msg/Odometry\nPublisher count: 1\nSubscription count: 2\n\n$ ros2 topic hz /odom\nNo messages received for 8.4 seconds\n\n[controller_server] /odom stale: last update was 8.4 seconds ago.\n[diff_drive_controller] Waiting for wheel state updates."
+  },
+  {
+    "id": "broken_tf",
+    "title": "A disconnected TF tree",
+    "category": "Transforms",
+    "description": "The laser frame cannot connect to the robot base.",
+    "text": "Symptom: Laser scan does not appear in RViz. ROS2 Humble.\n\n[rviz2] Could not find a connection between 'base_link' and 'laser' because they are not part of the same tree.\n\n$ ros2 topic echo /scan --once\nheader:\n  frame_id: laser\nangle_min: -3.14\nangle_max: 3.14\n\nURDF excerpt:\n<link name=\"base_link\"/>\n<link name=\"laser_link\"/>\n<joint name=\"laser_joint\" type=\"fixed\">\n  <parent link=\"base_link\"/>\n  <child link=\"laser_link\"/>\n  <origin xyz=\"0.2 0 0.15\" rpy=\"0 0 0\"/>\n</joint>"
+  },
+  {
+    "id": "lidar_failure",
+    "title": "LiDAR is not publishing",
+    "category": "Sensors",
+    "description": "A scan subscriber is waiting for a missing sensor driver.",
+    "text": "Symptom: Costmap is empty and no scan is visible. ROS2 Humble.\n\n$ ros2 topic info /scan\nType: sensor_msgs/msg/LaserScan\nPublisher count: 0\nSubscription count: 1\n\n$ ros2 topic echo /scan\nWARNING: topic [/scan] does not appear to be published yet\n\n[lidar_driver] Failed to open serial port /dev/ttyUSB0: Permission denied\n[lidar_driver] Shutting down driver."
+  },
+  {
+    "id": "parameter_crash",
+    "title": "One parameter, one crashed node",
+    "category": "Parameters",
+    "description": "A YAML string is supplied where the node expects a number.",
+    "text": "Symptom: The drive node exits during launch. ROS2 Humble.\n\n[drive_node] rclpy.exceptions.InvalidParameterTypeException: Trying to set parameter 'wheel_radius' to '0.033' of type STRING, expecting type DOUBLE\n[ERROR] [drive_node]: process has died [exit code 1].\n\nparams.yaml:\ndrive_node:\n  ros__parameters:\n    wheel_radius: \"0.033\"\n    wheel_separation: 0.16\n\nNode source excerpt:\nself.declare_parameter('wheel_radius', 0.033)"
+  },
+  {
+    "id": "map_odom",
+    "title": "Navigation cannot find the map",
+    "category": "Localization",
+    "description": "The map → odom transform is unavailable to Nav2.",
+    "text": "Symptom: Nav2 global costmap does not initialize. ROS2 Humble.\n\n[global_costmap] Timed out waiting for transform from base_link to map.\n[global_costmap] Invalid frame ID \"map\" passed to canTransform: frame does not exist\n[bt_navigator] map -> odom transform missing\n\n$ ros2 node list\n/map_server\n/amcl\n/controller_server\n/robot_state_publisher\n\n$ ros2 lifecycle get /amcl\ninactive [2]\n\n$ ros2 run tf2_ros tf2_echo odom base_link\nAt time 1712345678.0\nTranslation: [0.0, 0.0, 0.0]"
+  },
+  {
+    "id": "qos",
+    "title": "Same topic, incompatible QoS",
+    "category": "QoS",
+    "description": "The scan publisher and subscriber disagree on reliability.",
+    "text": "Symptom: /scan has a publisher, but my subscriber receives nothing. ROS2 Humble.\n\n$ ros2 topic info /scan --verbose\nType: sensor_msgs/msg/LaserScan\nPublisher count: 1\nSubscription count: 1\nNode name: lidar_driver\nEndpoint type: PUBLISHER\nQoS profile:\n  Reliability: BEST_EFFORT\n  Durability: VOLATILE\nNode name: obstacle_monitor\nEndpoint type: SUBSCRIPTION\nQoS profile:\n  Reliability: RELIABLE\n  Durability: VOLATILE\n\n[obstacle_monitor] New publisher discovered on topic '/scan', offering incompatible QoS. No messages will be received from it. Last incompatible policy: RELIABILITY"
+  },
+  {
+    "id": "python_dependency",
+    "title": "Python cannot find a module",
+    "category": "Python",
+    "description": "The active interpreter cannot import a dependency.",
+    "text": "$ python robot.py\nTraceback (most recent call last):\n  File \"robot.py\", line 2, in <module>\n    import serial\nModuleNotFoundError: No module named 'serial'"
+  },
+  {
+    "id": "python_runtime",
+    "title": "A Python runtime exception",
+    "category": "Python",
+    "description": "An empty sensor sample list breaks an average calculation.",
+    "text": "$ python monitor.py\nTraceback (most recent call last):\n  File \"monitor.py\", line 18, in <module>\n    average = sum(samples) / len(samples)\nZeroDivisionError: division by zero\n\nRelevant source:\nsamples = []\naverage = sum(samples) / len(samples)"
+  },
+  {
+    "id": "workspace_build",
+    "title": "A ROS2 workspace will not build",
+    "category": "ROS2",
+    "description": "colcon cannot resolve a declared dependency.",
+    "text": "$ colcon build\nStarting >>> robot_driver\nCMake Error at CMakeLists.txt:14 (find_package):\n  Could not find a package configuration file provided by \"serial_driver\"\nFailed   <<< robot_driver [0.85s, exited with code 1]\nAborted  <<< robot_bringup\n\nSummary: 0 packages finished; 1 package failed; 1 package aborted"
+  },
+  {
+    "id": "healthy_run",
+    "title": "A successful terminal run",
+    "category": "Python",
+    "description": "The latest example execution succeeds. No diagnosis is needed.",
+    "text": "$ python robot.py\nRobot initialized successfully.\nConnected to controller.\nMission started.\nExit code: 0",
+    "exit_code": 0
+  }
+]
