@@ -7,6 +7,8 @@ WORKSPACE_URL = 'http://127.0.0.1:5173/?source=companion'
 class BackendClient:
     def __init__(self):
         self.token = None
+        self.session_id = None
+        self.name = None
 
     def request(self, method, path, payload=None, timeout=5):
         headers = {'X-RoboDoctor-Session': self.token} if self.token else {}
@@ -21,7 +23,8 @@ class BackendClient:
         return response.json()
 
     def connect(self, shell, cwd):
-        self.token = self.request('POST', '/terminal/connect', {'shell': shell, 'cwd': cwd})['token']
+        data = self.request('POST', '/terminal/connect', {'shell': shell, 'cwd': cwd})
+        self.token, self.session_id, self.name = data['token'], data['session_id'], data['name']
 
     def disconnect(self):
         try:

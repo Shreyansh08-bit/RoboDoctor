@@ -62,20 +62,26 @@ async def analyze(request: DiagnoseRequest):
     return await run_diagnosis(request)
 
 
-async def run_diagnosis(request, execution=None):
+async def run_diagnosis(request, execution=None, issue_id=None):
     if ai_lock.locked():
         raise HTTPException(429, 'A diagnosis is already running. Try again when it finishes.')
     async with ai_lock:
         workspace.analyzing = True
         workspace.revision += 1
+        expected_revision = workspace.revision
         try:
-            history = [item['diagnosis']['summary'] for item in workspace.history[:3]]
+            history = workspace.sessions[execution['session_id']]['recent_commands'] if execution and execution.get('session_id') else [item['diagnosis']['summary'] for item in workspace.history[:3]]
+            if issue_id and request.mode == 'auto':
+                from app.diagnostics.investigation import investigate
+                request.files = await investigate(execution, issue_id)
             response, board = await analyze_evidence(request, execution, history)
             sequence = execution['sequence'] if execution else None
-            if not workspace.remember(response, board, sequence):
+            if not workspace.remember(response, board, sequence, (execution or {}).get('session_id'), issue_id, expected_revision):
                 raise HTTPException(409, 'A newer terminal command completed. Analyze that run instead.')
             return response
         finally:
+            if issue_id and workspace.issues[issue_id]['status'] == 'INVESTIGATING':
+                workspace.issues[issue_id].update(status='UNOPENED', investigation_state='waiting')
             workspace.analyzing = False
             workspace.revision += 1
 
@@ -88,7 +94,9 @@ def workspace_snapshot():
 @app.post('/api/terminal/connect')
 def terminal_connect(request: TerminalConnect):
     try:
-        return {'token': workspace.connect(request.shell, request.cwd)}
+        token = workspace.connect(request.shell, request.cwd)
+        session = workspace.session_for_token(token)
+        return {'token': token, 'session_id': session['id'], 'name': session['name']}
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
 
@@ -105,8 +113,7 @@ def terminal_disconnect(x_robodoctor_session: str = Header(default='')):
     with workspace.lock:
         if not workspace.authorized(x_robodoctor_session):
             raise HTTPException(401, 'Unknown terminal session')
-        workspace.token = None
-        workspace.revision += 1
+        workspace.disconnect(x_robodoctor_session)
     return {'status': 'disconnected'}
 
 
@@ -132,3 +139,46 @@ async def terminal_diagnose(mode: str = 'auto'):
         raise HTTPException(409, 'The terminal command is still running. Finish or stop it before diagnosing.')
     text = f"$ {execution['command']}\n{execution['output']}\nExit code: {execution['exit_code']}"
     return await run_diagnosis(DiagnoseRequest(text=text, mode=mode), execution)
+
+
+@app.post('/api/sessions/{session_id}/select')
+def select_session(session_id: str):
+    try:
+        workspace.select(session_id, focus=True)
+        return workspace.snapshot()
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.post('/api/terminal/focus-ack')
+def focus_ack(x_robodoctor_session: str = Header(default='')):
+    with workspace.lock:
+        session = workspace.session_for_token(x_robodoctor_session)
+        if not session:
+            raise HTTPException(401, 'Unknown terminal session')
+        if workspace.focus_request and workspace.focus_request['session_id'] == session['id']:
+            workspace.focus_request['status'] = 'attempted'
+            workspace.revision += 1
+    return {'status': 'attempted'}
+
+
+@app.post('/api/issues/{issue_id}/open', response_model=DiagnoseResponse)
+async def open_issue(issue_id: str, mode: str = 'auto'):
+    if mode not in {'auto', 'rules'}:
+        raise HTTPException(422, 'Choose auto or rules mode')
+    with workspace.lock:
+        issue = workspace.issues.get(issue_id)
+        if not issue or issue['status'] in {'RESOLVED','SUPERSEDED'}:
+            raise HTTPException(409, 'This issue is no longer current')
+        execution = workspace.sessions[issue['session_id']]['execution']
+        if execution['sequence'] != issue['execution_sequence'] or execution['state'] == 'running':
+            raise HTTPException(409, 'A newer command exists. Open its issue instead.')
+        if ai_lock.locked():
+            raise HTTPException(429, 'A diagnosis is already running')
+        workspace.select(issue['session_id'], focus=True)
+        if issue['diagnosis']:
+            workspace.latest = issue['diagnosis']
+            return issue['diagnosis']
+        issue.update(status='INVESTIGATING', investigation_state='gathering evidence')
+    text = f"$ {execution['command']}\n{execution['output']}\nExit code: {execution['exit_code']}"
+    return await run_diagnosis(DiagnoseRequest(text=text, mode=mode), execution, issue_id)

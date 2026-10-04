@@ -20,7 +20,7 @@ $frontendJob = Start-Job -ArgumentList $PSScriptRoot -ScriptBlock {
     node node_modules\vite\bin\vite.js --host 127.0.0.1 --strictPort 2>&1 | ForEach-Object { "$($_)" }
 }
  $desktopJob = $null
-Write-Host 'RoboDoctor: http://127.0.0.1:5173 · Ctrl+C to stop'
+Write-Host 'RoboDoctor: http://127.0.0.1:5173 - Ctrl+C to stop'
 try {
     if (-not $WebOnly) {
         for ($attempt = 0; $attempt -lt 30; $attempt++) {
@@ -32,7 +32,7 @@ try {
             Set-Location $projectDir
             & (Join-Path $projectDir '.venv\Scripts\python.exe') -m companion.desktop --cwd $terminalDir 2>&1 | ForEach-Object { "$($_)" }
         }
-        Write-Host 'Floating companion started. Double-click to inspect; right-click to open the managed terminal.'
+        Write-Host 'Floating companion started. Double-click to inspect; right-click for New managed terminal.'
     }
     while ($backendJob.State -eq 'Running' -and $frontendJob.State -eq 'Running') {
         Receive-Job $backendJob, $frontendJob

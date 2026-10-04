@@ -57,8 +57,8 @@ def build_blackboard(request: DiagnoseRequest, execution: dict | None = None,
             break
     return Blackboard(language=language, environment=environment,
                       system={'platform': platform.system(), 'python': platform.python_version()},
-                      ros2={key: value for key, value in environment.items() if key in {'ROS_DISTRO', 'ROS_VERSION', 'AMENT_PREFIX_PATH'}},
+                      ros2={key: value for key, value in environment.items() if key in {'ROS_DISTRO', 'ROS_VERSION', 'ROS_DOMAIN_ID', 'AMENT_PREFIX_PATH'}},
                       error_types=list(dict.fromkeys(f.code for f in findings)), patterns=findings,
                       important_evidence=important, relevant_sources=relevant_sources,
-                      execution={key: (execution or {}).get(key) for key in ['command', 'exit_code', 'cwd', 'state']},
+                      execution={key: (execution or {}).get(key) for key in ['session_id', 'sequence', 'command', 'exit_code', 'cwd', 'state', 'stdout', 'stderr', 'timestamp']},
                       recent_context=(history or [])[-3:], severity='warning' if findings else 'informational')

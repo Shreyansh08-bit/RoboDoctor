@@ -6,12 +6,30 @@ import threading
 import time
 import tkinter as tk
 import webbrowser
+from pathlib import Path
 from tkinter import messagebox
 
 from companion.client import BackendClient, WORKSPACE_URL
 from companion.session import ShellSession
 
-BG, PANEL, LINE, FG, MUTED, ACCENT = '#111619', '#192125', '#344047', '#dce5e3', '#8c9a9c', '#96c6af'
+BG, PANEL, LINE, FG, MUTED, ACCENT = '#f5f7f9', '#eaf1f5', '#dce6eb', '#294e5b', '#6d8793', '#438995'
+
+
+class CapsuleButton(tk.Canvas):
+    def __init__(self,parent,text,command,bg=PANEL,fg=FG,state='normal',padx=12):
+        self.caption=text; self.action=command; self.enabled=state!='disabled'; self.color=bg; self.ink=fg
+        super().__init__(parent,width=max(62,len(text)*7+padx*2),height=34,bg=BG,highlightthickness=0,cursor='hand2')
+        self.bind('<Button-1>',lambda event:self.action() if self.enabled else None)
+        self.paint()
+    def paint(self):
+        self.delete('all'); width=int(self.cget('width'))
+        color=self.color if self.enabled else '#e9eef1'
+        self.create_line(17,17,width-17,17,fill=color,width=32,capstyle='round')
+        self.create_text(width/2,17,text=self.caption,fill=self.ink if self.enabled else '#a5b4bc',font=('Segoe UI',9))
+    def configure(self,**kwargs):
+        if 'state' in kwargs: self.enabled=kwargs.pop('state')!='disabled'
+        if kwargs: super().configure(**kwargs)
+        self.paint()
 
 
 class ManagedTerminal:
@@ -29,11 +47,15 @@ class ManagedTerminal:
         except Exception:
             self.session.close()
             raise
+        self.root.title(f'RoboDoctor · {self.client.name}')
+        companion.terminals[self.client.session_id] = self
+        self.last_focus_id = None
         self.running = False
         self.closed = False
-        tk.Label(self.root, text='RoboDoctor terminal', font=('Segoe UI', 13, 'bold'), bg=BG, fg=FG).pack(anchor='w', padx=19, pady=(16, 4))
+        tk.Label(self.root, text=self.client.name, font=('Segoe UI', 13, 'bold'), bg=BG, fg=FG).pack(anchor='w', padx=19, pady=(16, 4))
         tk.Label(self.root, text='Only commands you type and run are executed. Suggestions never run automatically.', bg=BG, fg=MUTED, font=('Segoe UI', 9)).pack(anchor='w', padx=19)
-        self.output = tk.Text(self.root, bg='#0e1417', fg='#b8cac0', insertbackground=FG, font=('Consolas', 10), wrap='word', relief='flat', padx=13, pady=12)
+        self.root.minsize(640, 400)
+        self.output = tk.Text(self.root, height=12, bg='#ffffff', fg='#3c6373', insertbackground=FG, font=('Consolas', 10), wrap='word', relief='flat', padx=13, pady=12)
         self.output.pack(fill='both', expand=True, padx=18, pady=15)
         self.output.configure(state='disabled')
         self.status = tk.Label(self.root, text=self.session.cwd, bg=BG, fg=MUTED, anchor='w', font=('Segoe UI', 9))
@@ -44,11 +66,11 @@ class ManagedTerminal:
         self.command = tk.Entry(row, bg=PANEL, fg=FG, insertbackground=FG, font=('Consolas', 10), relief='flat')
         self.command.pack(side='left', fill='x', expand=True, ipady=7)
         self.command.bind('<Return>', self.run)
-        self.run_button = tk.Button(row, text='Run', command=self.run, bg=ACCENT, fg=BG, relief='flat', padx=15)
+        self.run_button = CapsuleButton(row, text='Run', command=self.run, bg=ACCENT, fg=BG, padx=15)
         self.run_button.pack(side='left', padx=(10, 0))
-        self.stop_button = tk.Button(row, text='Stop', command=self.stop, bg=PANEL, fg=FG, relief='flat', padx=12, state='disabled')
+        self.stop_button = CapsuleButton(row, text='Stop', command=self.stop, bg=PANEL, fg=FG, padx=12, state='disabled')
         self.stop_button.pack(side='left', padx=(7, 0))
-        tk.Button(row, text='Inspect', command=companion.open_workspace, bg=PANEL, fg=FG, relief='flat', padx=12).pack(side='left', padx=(7, 0))
+        CapsuleButton(row, text='Inspect', command=lambda: companion.open_session(self.client.session_id), bg=PANEL, fg=FG, padx=12).pack(side='left', padx=(7, 0))
         self.command.focus_set()
         self.root.protocol('WM_DELETE_WINDOW', self.close)
         self.root.after(100, self.drain)
@@ -67,6 +89,11 @@ class ManagedTerminal:
         while not self.closed:
             try:
                 self.client.request('POST', '/terminal/heartbeat')
+                state = self.client.request('GET', '/workspace')
+                focus = state.get('focus_request')
+                if focus and focus['session_id'] == self.client.session_id and focus['id'] != self.last_focus_id:
+                    self.last_focus_id = focus['id']
+                    self.events.put(('focus', None))
             except Exception:
                 self.events.put(('connection', 'Backend disconnected. Close and reopen this terminal after restarting the backend.'))
             time.sleep(5)
@@ -125,6 +152,15 @@ class ManagedTerminal:
             kind, value = self.events.get_nowait()
             if kind == 'output':
                 self.append(value)
+            elif kind == 'focus':
+                try:
+                    self.root.deiconify(); self.root.lift(); self.root.focus_force()
+                except tk.TclError:
+                    self.status.configure(text='Open this terminal from your taskbar; the OS restricted focus.')
+                def acknowledge():
+                    try: self.client.request('POST','/terminal/focus-ack')
+                    except Exception: pass
+                threading.Thread(target=acknowledge, daemon=True).start()
             elif kind == 'done':
                 self.running = False
                 self.append('\n' + value + '\n\n')
@@ -150,7 +186,7 @@ class ManagedTerminal:
         except Exception:
             pass
         self.root.destroy()
-        self.companion.terminal = None
+        self.companion.terminals.pop(self.client.session_id, None)
 
 
 class Companion:
@@ -163,21 +199,28 @@ class Companion:
         self.root.attributes('-topmost', True)
         self.root.configure(bg=BG)
         # Leave the Windows notification/calendar corner clear.
-        self.root.geometry(f'76x82+48+{self.root.winfo_screenheight()-154}')
-        self.canvas = tk.Canvas(self.root, width=76, height=82, bg=BG, highlightthickness=1, highlightbackground=LINE)
+        self.root.geometry(f'132x150+48+{self.root.winfo_screenheight()-220}')
+        self.root.configure(bg='white')
+        if os.name == 'nt':
+            self.root.attributes('-transparentcolor', 'white')
+        self.robot = tk.PhotoImage(file=str(Path(__file__).resolve().parents[1] / 'assets' / 'robot.png')).subsample(5,5)
+        self.root.iconphoto(True,self.robot)
+        self.canvas = tk.Canvas(self.root, width=132, height=150, bg='white', highlightthickness=0)
         self.canvas.pack()
         self.client = BackendClient()
         self.events = queue.Queue()
-        self.terminal = None
+        self.terminals = {}
+        self.issue_count = 0
+        self.last_focus_id = None
         self.closed = False
         self.busy = False
         self.visual_state = 'sleeping'
         self.visual_phase = 0.0
         self.warning_frames = 0
         self.draw('sleeping')
-        self.menu = tk.Menu(self.root, tearoff=False, bg=PANEL, fg=FG, activebackground='#293b32')
+        self.menu = tk.Menu(self.root, tearoff=False, bg=PANEL, fg=FG, activebackground='#dfeef3')
         self.menu.add_command(label='Open workspace', command=self.open_workspace)
-        self.menu.add_command(label='Open managed terminal', command=self.open_terminal)
+        self.menu.add_command(label='New managed terminal', command=self.open_terminal)
         self.menu.add_separator()
         self.menu.add_command(label='Quit companion', command=self.close)
         self.canvas.bind('<Double-Button-1>', self.open_workspace)
@@ -211,39 +254,52 @@ class Companion:
         user32.SetWindowLongW(hwnd, -16, style & ~0x00C40000)  # No title bar or resize frame.
         user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int,
                                        ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_uint]
-        user32.SetWindowPos(hwnd, None, 0, 0, 76, 82, 0x36)  # Recalculate frame at launcher size.
+        user32.SetWindowPos(hwnd, None, 0, 0, 132, 150, 0x36)  # Recalculate frame at launcher size.
         user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
         user32.ShowWindow(hwnd, 4)  # Show without stealing focus from the user's editor.
 
     def draw(self, label):
-        if label == 'check' and self.visual_state != 'check':
-            self.warning_frames = 12
         self.visual_state = label
         c = self.canvas
         c.delete('all')
-        color = '#d3b277' if label == 'check' else ACCENT
-        c.create_line(38, 18, 38, 23, fill=color)
-        c.create_oval(36, 15, 40, 19, fill=color, outline='')
-        c.create_rectangle(21, 24, 55, 49, outline='#668275', width=1, fill='#1c2b24')
-        c.create_rectangle(25, 29, 51, 40, fill='#101b16', outline='')
-        for x in [31, 44]:
-            c.create_line(x-3, 35, x+3, 35, fill=color, width=2, tags='eyes')
-        c.create_line(34, 44, 42, 44, fill='#6d8c7a')
-        c.create_text(61, 21, text='z' if label == 'sleeping' else '·', fill=MUTED, font=('Segoe UI', 9))
-        c.create_text(38, 65, text=label, fill=MUTED, font=('Segoe UI', 8))
+        c.create_image(66, 61, image=self.robot)
+        # Expression overlays sit inside the supplied face; body/proportions stay intact.
+        face = '#ffd531'
+        if label in {'sleeping','worried','investigating','unresolved'}:
+            for x in (49,74):
+                c.create_oval(x-5,42,x+5,51,fill=face,outline=face)
+                if label == 'sleeping':
+                    c.create_arc(x-4,42,x+4,49,start=180,extent=180,style='arc',outline='#215762',width=2)
+                elif label == 'investigating':
+                    c.create_oval(x-1,44,x+4,49,fill='#215762',outline='')
+                else:
+                    c.create_oval(x-3,44,x+3,50,fill='#215762',outline='')
+                    c.create_line(x-4,41,x+4,39 if x<60 else 43,fill='#215762',width=2)
+            if label in {'worried','unresolved'}:
+                c.create_oval(57,49,68,56,fill=face,outline=face)
+                c.create_arc(58,52,66,60,start=20,extent=140,style='arc',outline='#215762',width=2)
+        labels={'sleeping':'Resting','healthy':'Looks good','worried':f'{self.issue_count} issue' + ('s' if self.issue_count!=1 else ''),
+            'investigating':'Analyzing…','ready':'Diagnosis ready','unresolved':'Needs more evidence','offline':'Backend offline','listening':'Listening'}
+        if self.issue_count > 1 and label == 'ready':
+            labels['ready'] = f'{self.issue_count} issues / ready'
+        color = '#916e2f' if label in {'worried','unresolved'} else '#477a89'
+        # Rounded status pill, no enclosing desktop box.
+        c.create_line(19,137,113,137,fill='#edf4f6',width=22,capstyle='round')
+        c.create_text(66,137,text=labels.get(label,label),fill=color,font=('Segoe UI',8))
 
     def animate(self):
-        # Only the eyes change gently; no position/size changes or flashing.
-        if self.closed:
-            return
-        self.visual_phase += 0.14
-        base = '#d3b277' if self.visual_state == 'check' else ACCENT
-        brightness = 0.9 + 0.1 * (math.sin(self.visual_phase) + 1) / 2
-        if self.warning_frames:
-            self.warning_frames -= 1
-            brightness = 0.9 + 0.1 * math.sin(math.pi * self.warning_frames / 12)
-        self.canvas.itemconfigure('eyes', fill='#' + ''.join(f'{int(int(base[i:i+2],16)*brightness):02x}' for i in (1,3,5)))
-        self.root.after(160, self.animate)
+        if self.closed: return
+        # A blink every nine seconds; only investigating has gentle purposeful movement.
+        self.visual_phase += 1
+        if self.visual_state == 'investigating':
+            self.canvas.delete('thinking-dot')
+            x = 58 + (int(self.visual_phase)%3)*7
+            self.canvas.create_oval(x,122,x+3,125,fill=ACCENT,outline='',tags='thinking-dot')
+        elif int(self.visual_phase)%45 == 0 and self.visual_state in {'healthy','ready'}:
+            for x in (49,74):
+                self.canvas.create_line(x-4,46,x+4,46,fill='#ffd531',width=8,tags='blink')
+            self.root.after(160,lambda:self.canvas.delete('blink'))
+        self.root.after(200,self.animate)
 
     def drag_start(self, event):
         self.drag = (event.x_root, event.y_root, self.root.winfo_x(), self.root.winfo_y())
@@ -256,46 +312,47 @@ class Companion:
         while not self.closed:
             try:
                 data = self.client.request('GET', '/workspace')
-                latest = data.get('latest')
-                running = (data['terminal'].get('execution') or {}).get('state') == 'running'
-                label = 'checking' if data['analyzing'] else 'listening' if running else ('check' if latest and latest['status'] == 'problem' else 'sleeping')
-                self.events.put(('state', label))
+                self.issue_count = data.get('issue_count',0)
+                label = data.get('emotion','sleeping')
+                if any((session.get('execution') or {}).get('state')=='running' for session in data.get('sessions',[])) and not self.issue_count and not data['analyzing']:
+                    label='listening'
+                self.events.put(('state',label))
             except Exception:
-                self.events.put(('state', 'offline'))
-            time.sleep(3)
+                self.events.put(('state','offline'))
+            time.sleep(2)
+
+    def open_session(self, sid):
+        def route():
+            try:
+                state=self.client.request('POST',f'/sessions/{sid}/select')
+                issue=next((i for i in state['issues'] if i['session_id']==sid),None)
+                webbrowser.open(WORKSPACE_URL.split('?')[0] + f'?session={sid}',new=0,autoraise=True)
+                if issue: self.client.request('POST',f"/issues/{issue['id']}/open",timeout=360)
+            except Exception as exc: self.events.put(('error',str(exc)))
+        threading.Thread(target=route,daemon=True).start()
 
     def open_workspace(self, event=None):
-        if self.busy:
-            return
-        self.busy = True
-        self.draw('checking')
-        def inspect():
+        if self.busy: return
+        self.busy=True
+        def route():
             try:
-                # Browser launching must not block Tk's event loop.
-                if not webbrowser.open(WORKSPACE_URL, new=0, autoraise=True):
-                    self.events.put(('error', 'Open http://127.0.0.1:5173 in your browser.'))
-                snapshot = self.client.request('GET', '/workspace')
-                execution = snapshot['terminal']['execution']
-                if execution and execution['state'] != 'running':
-                    self.client.request('POST', '/terminal/diagnose', timeout=210)
-            except Exception as exc:
-                self.events.put(('error', str(exc)))
-            finally:
-                self.events.put(('finished', None))
-        threading.Thread(target=inspect, daemon=True).start()
+                state=self.client.request('GET','/workspace')
+                issues=state['issues']
+                # Multiple issues stay unopened until the user chooses one.
+                if len(issues)==1:
+                    sid=issues[0]['session_id']
+                    self.client.request('POST',f'/sessions/{sid}/select')
+                    webbrowser.open(WORKSPACE_URL.split('?')[0]+f'?session={sid}',new=0,autoraise=True)
+                    self.client.request('POST',f"/issues/{issues[0]['id']}/open",timeout=360)
+                else:
+                    webbrowser.open(WORKSPACE_URL,new=0,autoraise=True)
+            except Exception as exc: self.events.put(('error',str(exc)))
+            finally: self.events.put(('finished',None))
+        threading.Thread(target=route,daemon=True).start()
 
     def open_terminal(self):
-        if self.terminal:
-            self.terminal.root.deiconify()
-            self.terminal.root.lift()
-            return
-        try:
-            self.terminal = ManagedTerminal(self)
-        except Exception as exc:
-            for child in self.root.winfo_children():
-                if isinstance(child, tk.Toplevel):
-                    child.destroy()
-            messagebox.showerror('RoboDoctor terminal', str(exc), parent=self.root)
+        try: ManagedTerminal(self)
+        except Exception as exc: messagebox.showerror('RoboDoctor terminal',str(exc),parent=self.root)
 
     def drain(self):
         if self.closed:
@@ -308,13 +365,13 @@ class Companion:
                 self.busy = False
             elif kind == 'error':
                 # The web workspace exposes setup/busy states; no intrusive popup on diagnosis.
-                self.draw('offline' if 'connect' in value.lower() else 'check')
+                self.draw('offline' if 'connect' in value.lower() else 'unresolved')
         self.root.after(100, self.drain)
 
     def close(self):
         self.closed = True
-        if self.terminal:
-            self.terminal.close()
+        for terminal in list(self.terminals.values()):
+            terminal.close()
         self.root.destroy()
 
 

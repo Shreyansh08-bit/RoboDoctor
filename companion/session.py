@@ -8,6 +8,8 @@ import signal
 import subprocess
 import sys
 import threading
+import tempfile
+from pathlib import Path
 from uuid import uuid4
 
 ENV_KEYS = ('ROS_DISTRO', 'ROS_VERSION', 'ROS_DOMAIN_ID', 'AMENT_PREFIX_PATH', 'VIRTUAL_ENV', 'CONDA_DEFAULT_ENV')
@@ -62,13 +64,18 @@ class ShellSession:
         self.sequence += 1
         marker = '__ROBODOCTOR_' + uuid4().hex
         process, output_queue = self.process, self.lines
-        process.stdin.write(self.script(command, marker))
+        capture = tempfile.NamedTemporaryFile(prefix='robodoctor-stderr-', delete=False)
+        stderr_path = capture.name
+        capture.close()
+        redirected = (". { " + command + " } 2> '" + stderr_path.replace("'", "''") + "'") if self.windows else ('{ ' + command + '; } 2> ' + shlex.quote(stderr_path))
+        process.stdin.write(self.script(redirected, marker))
         process.stdin.flush()
         output = ''
         while True:
             line = output_queue.get()
             if line is None:
                 code = process.wait()
+                Path(stderr_path).unlink(missing_ok=True)
                 return {'command': command, 'output': output[-12000:], 'exit_code': code if code else 1,
                         'state': 'cancelled' if code else 'finished', 'sequence': self.sequence,
                         'cwd': self.cwd, 'environment': {}}
@@ -81,7 +88,16 @@ class ShellSession:
                     data = {**json.loads(metadata), 'exit_code': int(exit_code)}
                 self.cwd = data['cwd']
                 data['environment'] = {key: str(value)[:1500] for key, value in data['environment'].items() if value}
-                return {'command': command, 'output': output[-12000:], 'sequence': self.sequence,
+                with open(stderr_path, 'rb') as capture:
+                    bom = capture.read(2)
+                    capture.seek(0, 2)
+                    capture.seek(max(0, capture.tell()-24000))
+                    raw = capture.read(24000)
+                stderr = raw.decode('utf-16-le' if bom == b'\xff\xfe' else 'utf-8', 'replace').lstrip('\ufeff')[-12000:]
+                Path(stderr_path).unlink(missing_ok=True)
+                if stderr and on_output:
+                    on_output(stderr, (output + stderr)[-12000:])
+                return {'command': command, 'output': (output + stderr)[-12000:], 'stdout': output[-12000:], 'stderr': stderr, 'sequence': self.sequence,
                         'state': 'finished', **data}
             output = (output + line)[-12000:]
             if on_output:

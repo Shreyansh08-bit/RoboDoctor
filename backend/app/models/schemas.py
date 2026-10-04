@@ -96,3 +96,6 @@ class DiagnoseResponse(StrictModel):
     notice: str | None = None
     elapsed_ms: int
     status: Literal['problem', 'healthy', 'insufficient'] = 'problem'
+    session_id: str | None = None
+    execution_sequence: int | None = None
+    issue_id: str | None = None

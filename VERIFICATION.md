@@ -1,64 +1,93 @@
-# Verification — UI refinement
+# Verification — supplied robot, light UI and multi-session workflow
 
-Verified on Windows on **4 October 2026**, with Python 3.10.10, Node.js 24.19.0, Ollama, and the installed `gemma3:4b` model. This update refines presentation and UX. SHA-256 comparisons confirm all **14 backend application source files are unchanged**. The diagnostic engine, APIs, blackboard, and Ollama client were preserved.
+Verified on Windows on **4 October 2026**. The existing application was extended in place; the detector/fallback/structured Gemma diagnosis pipeline remains. Backend session and API orchestration were intentionally extended for the new interaction brief.
 
-## Build and regression checks
+## Results
 
-- **62 pytest tests pass.** The original 59 tests still pass; three additional resilience tests cover malformed terminal control sequences, bounded/normalized output, empty and unstructured evidence, and rules/healthy operation without inference.
-- Strict TypeScript compilation and production Vite build pass: 56 modules, approximately 218.94 KB JavaScript / 68.05 KB gzip; CSS 18.79 KB / 4.80 KB gzip.
-- Repeated clean Windows startup/shutdown: ports 8000 and 5173 were verified closed before restarting. The frontend, backend, and floating launcher started again, and the captured Python/ROS2-style/healthy integration checks passed after the final restart.
-- The configured `.env` remained `gemma3:4b` and loopback Ollama. Temporary failure-test configuration was supplied only to isolated backend processes; the user's actual Ollama service and installed weights were left intact.
+- **114 backend tests pass** (62 existing tests and 52 new test cases). There is one existing Starlette/AnyIO deprecation warning.
+- Strict TypeScript compilation and production Vite build pass: 56 modules; JS 222.94 KB / 69.09 KB gzip; CSS 27.46 KB / 6.67 KB gzip. No frontend unit-test runner existed; browser interaction checks supplement the build.
+- Multiple clean Windows stops/starts completed. Ports 8000/5173 were confirmed closed before the final startup. Frontend, backend, local Gemma connection and supplied-image launcher came back up.
+- The supplied PNG is copied unchanged into `assets/robot.png` and `frontend/public/robot.png`; desktop, sidebar and favicon use it. Native facial overlays preserve the body, colors and proportions.
 
-## Real execution and local inference
+## Live checks
 
-| Check | Result |
+| Check | Observed result |
 | --- | --- |
-| Python missing import | A real managed PowerShell execution failed with `ModuleNotFoundError`. Gemma returned a validated local diagnosis (about 44 seconds). |
-| ROS2-style package error | A failing command emitted a ROS2-style `PackageNotFoundError` fixture. The backend detected the package pattern and Gemma returned a local response (about 37 seconds). This minimal fixture was ambiguous to Gemma, which interpreted it as a Python dependency. |
-| Rich ROS2 parameter fixture | The managed shell emitted the existing parameter-crash fixture, including ROS2 context and selected environment metadata. A repeated run returned a validated Gemma diagnosis identifying the string/double mismatch (about 44 seconds). |
-| Real ROS2 CLI invocation | `ros2 --help` failed because ROS2 is not installed here. RoboDoctor correctly diagnosed an unavailable command/environment. |
-| Successful command | A real Python command printed successful robot initialization/controller/mission messages and exited 0. The backend returned exactly **✓ Everything looks good.**, engine `observed`, with no commands. |
-| Local inference without internet access | A process-level guard blocked external TCP connections and external DNS while allowing loopback. Installed Gemma returned a validated syntax-error diagnosis. The network adapter and OS settings were not changed. |
+| Three native managed terminals | Created Terminal 01, 02 and 03 through the real robot menu. They appeared as independent sessions in the workspace. |
+| Three real shell clients | Independent persistent PowerShell sessions captured two successful commands and one actual `import nonexistent_package` failure, with separate stdout/stderr. Only the failed session created an issue; inference remained idle. |
+| No-error double-click | Real desktop double-click opened the RoboDoctor workspace in the default Brave browser. |
+| Single issue double-click | The actual worried robot displayed one issue. Double-click selected its session and began investigation automatically. |
+| First live Gemma investigation | Gemma requested `python3 --version`; the read-only diagnostic session returned Python 3.10.10. A validated local-AI report identified `nonexistent_package`. Final report inference took approximately 53 seconds, excluding probe planning. |
+| Multiple issues double-click | A second real shell failed independently. The robot displayed 2 issues. Double-click left inference idle; the first issue was diagnosed and the second remained unopened. |
+| Selected second investigation | Selecting only the second issue in the browser started its investigation. Gemma requested `python --version`, then returned a validated ValueError diagnosis (approximately 59 seconds for final inference). Reports retained the correct session ID and execution sequence. |
+| Successful identical rerun | A controlled environment flag changed the behavior of the same command. The actual rerun exited 0; only that command's issue resolved. The robot returned to happy when no issues remained. |
+| Native terminal focus | Selecting Terminal 01 requested the matching GUI window and the companion acknowledged the attempt. The correct named window was observed. OS focus is best-effort; the product never claims confirmed focus and retains an Open Terminal fallback. |
+| Native controls | Final startup created a terminal with visible rounded Run/Stop/Inspect controls, correct robot window icon, and readable light output area. The text area's initial height was reduced so controls no longer fell below the window. |
 
-The managed shell/client implementation and real loopback backend were used for execution tests. Suggested commands were never executed. A test harness initially hit a Windows console encoding error while printing the checkmark after its healthy assertions had passed; UTF-8 output was corrected. This was a harness logging issue, not an application failure.
+Native terminal commands were tested through the existing runner/client in shell harnesses, not by typing into Windows terminal UI. Desktop menu/double-click and browser selection were exercised with the Computer Use tool. Browser-created examples remain explicitly labeled as examples.
 
-## Failure checks
+## Regression coverage
 
-- **Ollama unreachable:** an isolated backend used an unused loopback Ollama port. Health distinguished installed runtime from unreachable API, the setup dialog showed the right state, diagnosis returned an explicitly labeled rules fallback, and the healthy example still worked.
-- **Gemma missing:** an isolated backend requested a deliberately nonexistent local model. The actual Ollama API remained reachable. Health showed runtime found / API reachable / model unavailable; diagnosis handled HTTP 404 with rules guidance. No model download occurred.
-- **Unverified model evidence:** one rich ROS2 attempt returned a quote that did not exactly match supplied lines. The existing evidence validator rejected it and correctly produced a disclosed rules-only report. A later attempt produced validated evidence. Model recommendations remain hypotheses; successful formatting/quote validation does not guarantee technical correctness.
-- **Malformed output:** ANSI sequences, NULs, and long output were normalized and bounded; the meaningful exception survived. Unstructured pasted text, including a literal script-like string, returned insufficient evidence rather than a healthy guess.
-- **Empty terminal:** `/api/terminal/diagnose` returned 409 with no execution; the web Inspect button was disabled. Running and cancelled execution behavior remains covered by existing tests.
-- **Backend restart/reconnection:** stale reports clear when a fresh backend has no history. Examples now retry after the backend becomes available instead of leaving a startup error behind.
+New cases verify unique session IDs, independent sequences and output, multiple simultaneous issues, deterministic error detection without inference, selecting only one issue, automatic issue-open diagnosis, cached repeat opens, correct focus association, successful rerun isolation, healthy/idle/concerned/unresolved states, and low-confidence handling. A background session's streaming updates and successful completion cannot steal another selected issue.
+
+Tests also cover stale Gemma responses, a slow fake_robot example after a newer real execution, silent whitespace-only output, separate real stdout/stderr streams, missing Ollama fallback without probes, 18 approved command forms, 15 prohibited command forms, actual read-only collection, planner rejection and a hard maximum of three investigation rounds. Existing Python/ROS2 parser, model availability, input-validation, origin and terminal cancellation tests continue to pass.
+
+A live silent environment-setting command exposed a whitespace normalization error during verification. It was fixed, covered by a regression test, and the real identical-command rerun then passed. A Windows encoding issue in the temporary edit scripts was also corrected; final app labels and terminal titles are valid UTF-8.
 
 ## Visual and interaction checks
 
-- Checked **1920×1080, 1440×900, 1280×800, 1024×768, and 390×844**. Document and viewport widths matched at each size; no horizontal overflow. Content width stays bounded on large desktops. Temporary viewport overrides are reset after verification.
-- Latest diagnosis is the visual focus. Evidence, cause, commands, confidence explanation, and supporting context expand on demand; the fix is initially visible. Healthy mode is deliberately sparse.
-- Sidebar navigation retains Diagnose, Terminal, Examples, History, and Settings. All eleven examples remain accessible.
-- History selection restores a prior report. Evidence and command disclosures open correctly. Copy changes to **Copied**.
-- A synthetic UTF-8 `.log` file uploaded through the browser file chooser and produced the expected syntax diagnosis. Paste, file validation, upload limits, and example behavior remain covered by backend tests.
-- The footer displays **RoboDoctor / Made by Shreyansh Chauhan / v1.0**. It remains visible on narrow screens.
-- Launcher, sidebar mark, and favicon use the same quiet robot identity and restrained green/amber palette. The web signal responds only to actual state, and CSS respects reduced-motion preferences. No artificial thinking stages, giant demo panel, gradients, or decorative metrics were added.
-- The Windows launcher renders correctly with quiet sleeping/checking states. It starts clear of the notification corner and retains its existing drag, double-click, and menu bindings.
+- Light blue/teal surfaces, curved corners, restrained shadows and smooth button/disclosure motion replace the dark angular presentation. The footer remains **RoboDoctor / Made by Shreyansh Chauhan / v1.0**.
+- Checked 1920×1080, 1440×900, 1280×800, 1024×768 and 390×844. No horizontal overflow after fixing narrow-screen navigation padding. Temporary viewport overrides were reset.
+- All eleven examples remain accessible. The ROS2 parameter example rendered correctly as a labeled rules report. Command disclosure and Copy → Copied worked.
+- The supplied robot was observed resting, worried with one issue, worried with two issues and happy after resolution. The live backend/browser showed investigating and diagnosis-ready states; low-confidence/unresolved transitions are covered by tests. The image stays recognizable with restrained eye/face overlays.
+- UI screenshots: [clean-start workspace](docs/light-ready.jpg), [healthy rerun](docs/light-healthy.jpg), [live Gemma report](docs/light-workspace.jpg), [ROS2 example](docs/light-example.jpg), [robot](docs/light-launcher.jpg), [native terminal](docs/light-terminal.jpg).
 
-## Verification limits
+## Architecture and files changed
 
-- **Native input automation is blocked on the current Windows session:** the helper can capture the borderless launcher but returns `failed to activate captured window` for input. This prevents automated confirmation of double-click/drag on the refined build. A manual double-click check was requested. The previous build's double-click/browser/menu behavior was verified on 3 October; the same launcher handlers remain in this update.
-- **No live ROS2 node or robot was available.** The actual missing-CLI case and captured ROS2 fixtures were tested; live robot correctness is not claimed.
-- **Ubuntu desktop runtime remains unverified.** Linux/Bash branches were preserved; this Windows environment cannot verify a Linux compositor. Mac remains unsupported.
-- The suite has one existing Starlette/AnyIO deprecation warning; all tests pass.
+| File | Change |
+| --- | --- |
+| `backend/app/state.py` | Session isolation, token ownership, issue lifecycle, deterministic detection, selected-view protection, sequence guards |
+| `backend/app/main.py` | Session selection/focus, issue-open routing, bounded investigation, cached diagnosis and stale result handling |
+| `backend/app/models/schemas.py` | Session/sequence/issue identifiers on reports |
+| `backend/app/diagnostics/blackboard.py` | Session IDs, sequence, streams, timestamp and ROS_DOMAIN_ID context |
+| `backend/app/diagnostics/investigation.py` | Local probe planner, strict argv allowlist, three-round bound, time/output caps and separate diagnostic log |
+| `companion/client.py` | Per-client session identity and name |
+| `companion/session.py` | Separate bounded stdout/stderr capture while preserving persistent PowerShell/Bash behavior |
+| `companion/desktop.py` | Supplied robot, expression overlays, multiple windows, issue-aware double-click, focus handling, light rounded controls |
+| `frontend/src/App.tsx` | Terminal roster, issue chooser, automatic selected issue investigation, diagnostic transcript and stale UI response guards |
+| `frontend/src/style.css` / `frontend/index.html` | Light curved presentation, responsive layout and PNG favicon |
+| `assets/robot.png` / `frontend/public/robot.png` | Unchanged supplied image |
+| `backend/tests/test_multi_session.py` / `test_companion_routing.py` | 52 additional regression cases |
+| `start.ps1` / `README.md` / `VERIFICATION.md` / `docs/` | Startup wording, architecture, workflow instructions and verification artifacts |
 
-Screenshots: [healthy workspace](docs/healthy.jpg), [diagnosis workspace](docs/workspace.jpg), [launcher](docs/launcher.jpg), [Ollama offline](docs/ollama-offline.jpg), [Gemma missing](docs/gemma-missing.jpg).
+## Start and create terminals
 
-## Reproduce
+Windows, from the project folder:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest backend\tests -q
-cd frontend
-npm run build
-cd ..
 powershell -ExecutionPolicy Bypass -File .\start.ps1
+# Optional project directory:
+powershell -ExecutionPolicy Bypass -File .\start.ps1 -ProjectPath C:\path\to\robot_ws
 ```
 
-Run the README examples in the managed terminal and inspect them through the workspace or launcher. Ollama and Gemma setup remain explicit user actions; no packages, weights, or project fixes are installed/applied automatically.
+Ubuntu:
+
+```bash
+bash start.sh
+bash start.sh --cwd ~/robot_ws
+```
+
+Right-click the robot → **New managed terminal** repeatedly. Run commands in each window. Failed sessions appear automatically; double-click the robot, then select an issue if several exist. Fix suggestions remain user-controlled.
+
+## Known limits
+
+- ROS2 is not installed on this Windows machine. The exact three-turtlesim demo could not be executed; ROS2 detection was checked with existing captured fixtures and regression cases. No live robot/node correctness is claimed.
+- Ubuntu desktop/compositor behavior is unverified here. Bash branches remain; Windows transparency is implemented, while the current Linux Tk launcher may retain an opaque background. Mac is unsupported.
+- Managed sessions are persistent pipes, not a full interactive TTY. Password prompts, fullscreen terminal tools and arbitrary external terminals are outside scope.
+- Diagnostic environment is a separate process context, not a complete clone of every shell variable. PATH comes from backend startup; captured ROS metadata and a virtual-environment interpreter are used where available. Tool absence in this context is reported as such.
+- Sessions/issues/history remain process-local and clear on backend restart. Maximum 32 sessions per backend lifetime; reports retain twelve history entries. A closed terminal's stored output can be inspected, but it has no live window to focus.
+- Diagnosis caching avoids duplicate inference for the same execution. A newer execution supersedes stale results. An unrelated successful command does not resolve an older failed command; rerun the relevant command successfully.
+- Model recommendations are hypotheses. Exact quote/schema validation does not prove technical correctness. Unavailable/invalid Gemma output is disclosed as rules fallback. No cloud model, automatic fix or package installation was introduced.
+## Ubuntu onboarding documentation
+
+The README now includes the configured GitHub clone URL, Ubuntu system dependencies, Node 22 through `.nvmrc` / nvm, isolated Python installation, Ollama service and model setup, desktop and headless launch paths, health checks, a same-command error/recovery demo, optional ROS2 environment sourcing, troubleshooting, and contributor commands. `.gitattributes` preserves LF line endings for Bash scripts. Install instructions were checked against the official nvm and Ollama documentation. Git Bash `bash -n` checks the launcher and README Bash command blocks; this is syntax/documentation validation, not a completed Ubuntu desktop test. Real Ubuntu compositor, terminal, and Gemma behavior remains unverified.
